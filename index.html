@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Palette - 圖片顏色擷取</title>
+	<link rel="icon" href="data:,">
+	<style>
+		:root {
+			color-scheme: light dark;
+			--bg: #f4f4f2;
+			--panel: #ffffff;
+			--border: #dcdcd8;
+			--text: #1f1f1d;
+			--muted: #6f6f6a;
+			--control: #ffffff;
+			--control-hover: #ecece8;
+			--error: #b3261e;
+		}
+
+		@media (prefers-color-scheme: dark) {
+			:root {
+				--bg: #151515;
+				--panel: #1e1e1e;
+				--border: #353535;
+				--text: #ececea;
+				--muted: #9c9c96;
+				--control: #262626;
+				--control-hover: #323232;
+				--error: #f2b8b5;
+			}
+		}
+
+		* {
+			box-sizing: border-box;
+		}
+
+		body {
+			margin: 0;
+			height: 100dvh;
+			display: flex;
+			flex-direction: column;
+			background: var(--bg);
+			color: var(--text);
+			font-family: system-ui, "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+			font-size: 15px;
+		}
+
+		/* 上方工具列 */
+		header {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 12px 20px;
+			padding: 12px 20px;
+			border-bottom: 1px solid var(--border);
+		}
+
+		h1 {
+			margin: 0 auto 0 0;
+			font-size: 18px;
+			font-weight: 600;
+			letter-spacing: 0.02em;
+		}
+
+		.field {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			color: var(--muted);
+			font-size: 14px;
+		}
+
+		button,
+		select {
+			height: 34px;
+			padding: 0 12px;
+			border: 1px solid var(--border);
+			border-radius: 8px;
+			background: var(--control);
+			color: var(--text);
+			font: inherit;
+			cursor: pointer;
+		}
+
+		button:hover:not(:disabled),
+		select:hover {
+			background: var(--control-hover);
+		}
+
+		button:disabled {
+			opacity: 0.4;
+			cursor: default;
+		}
+
+		.stepper {
+			display: flex;
+			align-items: center;
+		}
+
+		.stepper button {
+			width: 34px;
+			padding: 0;
+			font-size: 18px;
+			line-height: 1;
+		}
+
+		.stepper output {
+			width: 36px;
+			text-align: center;
+			color: var(--text);
+			font-weight: 600;
+			font-variant-numeric: tabular-nums;
+		}
+
+		/* 狀態列 */
+		#status {
+			min-height: 20px;
+			margin: 10px 20px 0;
+			color: var(--muted);
+			font-size: 13px;
+		}
+
+		#status.error {
+			color: var(--error);
+		}
+
+		/* 左右兩個面板 */
+		main {
+			flex: 1;
+			min-height: 0;
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 16px;
+			padding: 10px 20px 20px;
+		}
+
+		.panel {
+			min-height: 0;
+			border: 1px solid var(--border);
+			border-radius: 12px;
+			background: var(--panel);
+			overflow: auto;
+		}
+
+		.placeholder {
+			height: 100%;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			padding: 24px;
+			color: var(--muted);
+			text-align: center;
+		}
+
+		#image-panel {
+			cursor: pointer;
+		}
+
+		#image-panel.dragging {
+			border-style: dashed;
+			border-color: var(--text);
+		}
+
+		#preview {
+			display: block;
+			width: 100%;
+			height: 100%;
+			object-fit: contain;
+		}
+
+		#swatches {
+			height: 100%;
+			display: flex;
+			flex-direction: column;
+			transition: opacity 0.15s;
+		}
+
+		#swatches.busy {
+			opacity: 0.5;
+		}
+
+		.swatch {
+			flex: 1;
+			min-height: 44px;
+			height: auto;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 12px;
+			padding: 0 18px;
+			border: 0;
+			border-radius: 0;
+			font-family: ui-monospace, Consolas, monospace;
+			font-size: 13px;
+			text-align: left;
+		}
+
+		.swatch:hover {
+			filter: brightness(1.06);
+		}
+
+		.swatch .hex {
+			font-size: 16px;
+			font-weight: 600;
+			text-transform: uppercase;
+		}
+
+		[hidden] {
+			display: none !important;
+		}
+
+		/* 窄螢幕改為上下排列 */
+		@media (max-width: 720px) {
+			body {
+				height: auto;
+				min-height: 100dvh;
+			}
+
+			main {
+				grid-template-columns: 1fr;
+			}
+
+			.panel {
+				min-height: 280px;
+			}
+
+			#preview {
+				height: auto;
+				max-height: 60vh;
+			}
+
+			#swatches {
+				min-height: 280px;
+			}
+		}
+	</style>
+</head>
+<body>
+	<header>
+		<h1>Palette</h1>
+
+		<button type="button" id="upload-button">上傳圖片</button>
+		<input type="file" id="file-input" accept="image/jpeg,image/png,image/webp,image/bmp" hidden>
+
+		<div class="field">
+			<span id="count-label">顏色數量</span>
+			<div class="stepper" role="group" aria-labelledby="count-label">
+				<button type="button" id="decrease" aria-label="減少顏色數量">&minus;</button>
+				<output id="count" aria-live="polite">5</output>
+				<button type="button" id="increase" aria-label="增加顏色數量">+</button>
+			</div>
+		</div>
+
+		<label class="field">
+			Mood
+			<select id="mood">
+				<option value="Colorful">Colorful 鮮豔</option>
+				<option value="Bright" selected>Bright 明亮</option>
+				<option value="Muted">Muted 柔和</option>
+				<option value="Deep">Deep 深沉</option>
+			</select>
+		</label>
+	</header>
+
+	<p id="status" role="status"></p>
+
+	<main>
+		<section class="panel" id="image-panel" aria-label="上傳的圖片">
+			<div class="placeholder" id="image-placeholder">點擊或將圖片拖曳到這裡</div>
+			<img id="preview" alt="上傳的圖片" hidden>
+		</section>
+
+		<section class="panel" aria-label="擷取出的顏色">
+			<div class="placeholder" id="swatch-placeholder">擷取出的顏色會顯示在這裡</div>
+			<div id="swatches" hidden></div>
+		</section>
+	</main>
+
+	<script>
+		const MIN_COLORS = 0;
+		const MAX_COLORS = 8;
+
+		const fileInput = document.getElementById('file-input');
+		const imagePanel = document.getElementById('image-panel');
+		const imagePlaceholder = document.getElementById('image-placeholder');
+		const preview = document.getElementById('preview');
+		const swatches = document.getElementById('swatches');
+		const swatchPlaceholder = document.getElementById('swatch-placeholder');
+		const statusText = document.getElementById('status');
+		const countOutput = document.getElementById('count');
+		const decreaseButton = document.getElementById('decrease');
+		const increaseButton = document.getElementById('increase');
+		const moodSelect = document.getElementById('mood');
+
+		let count = 5;
+		let hasImage = false;
+		let engineReady = false;
+		let engineFailed = false;
+		// 最新一次請求的編號，用來忽略過期的回應
+		let latestRequestId = 0;
+		let debounceTimer = null;
+
+		const worker = new Worker('worker.js', { type: 'module' });
+
+		worker.onmessage = ({ data }) => {
+			if (data.type === 'ready') {
+				engineReady = true;
+				updateStatus();
+			} else if (data.type === 'fatal') {
+				engineFailed = true;
+				setStatus(`運算環境載入失敗：${data.message}。請確認網路連線後重新整理頁面。`, true);
+			} else if (data.id === latestRequestId) {
+				swatches.classList.remove('busy');
+				if (data.type === 'result') {
+					renderColors(data.colors);
+					updateStatus();
+				} else {
+					renderColors([]);
+					setStatus(data.message, true);
+				}
+			}
+		};
+
+		worker.onerror = () => {
+			engineFailed = true;
+			setStatus('運算環境載入失敗，請確認網路連線後重新整理頁面。', true);
+		};
+
+		function setStatus(message, isError = false) {
+			statusText.textContent = message;
+			statusText.classList.toggle('error', isError);
+		}
+
+		// 依目前狀態顯示對應的提示文字
+		function updateStatus() {
+			if (engineFailed) {
+				return;
+			}
+			if (!engineReady) {
+				setStatus('正在載入運算環境，首次開啟需下載約 40 MB，請稍候...');
+			} else if (!hasImage) {
+				setStatus('請上傳圖片');
+			} else if (swatches.classList.contains('busy')) {
+				setStatus('擷取中...');
+			} else {
+				setStatus(count > 0 ? '點擊色塊可複製色碼' : '');
+			}
+		}
+
+		// 向 Worker 送出擷取請求；imageBuffer 只有在更換圖片時才需要傳入
+		function requestColors(imageBuffer) {
+			clearTimeout(debounceTimer);
+			if (!hasImage || engineFailed) {
+				return;
+			}
+			latestRequestId += 1;
+			const message = { id: latestRequestId, count, mood: moodSelect.value };
+			if (imageBuffer) {
+				worker.postMessage({ ...message, image: imageBuffer }, [imageBuffer]);
+			} else {
+				worker.postMessage(message);
+			}
+			swatches.classList.add('busy');
+			updateStatus();
+		}
+
+		// 連續調整參數時，等操作停下來再送出請求
+		function requestColorsDebounced() {
+			clearTimeout(debounceTimer);
+			debounceTimer = setTimeout(() => requestColors(), 200);
+		}
+
+		async function loadImage(file) {
+			if (!file) {
+				return;
+			}
+			if (!file.type.startsWith('image/')) {
+				setStatus('請選擇圖片檔案', true);
+				return;
+			}
+			URL.revokeObjectURL(preview.src);
+			preview.src = URL.createObjectURL(file);
+			preview.hidden = false;
+			imagePlaceholder.hidden = true;
+			hasImage = true;
+			requestColors(await file.arrayBuffer());
+		}
+
+		function renderColors(colors) {
+			swatches.replaceChildren(...colors.map(createSwatch));
+			swatches.hidden = colors.length === 0;
+			swatchPlaceholder.hidden = colors.length > 0;
+			swatchPlaceholder.textContent = hasImage && count === 0
+				? '顏色數量為 0'
+				: '擷取出的顏色會顯示在這裡';
+		}
+
+		function createSwatch(color) {
+			const [r, g, b] = color.rgb;
+			// 依背景亮度選擇文字顏色，確保色碼清楚可讀
+			const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+
+			const swatch = document.createElement('button');
+			swatch.type = 'button';
+			swatch.className = 'swatch';
+			swatch.title = '點擊複製色碼';
+			swatch.style.background = color.hex;
+			swatch.style.color = luminance > 150 ? '#1f1f1d' : '#ffffff';
+
+			const hex = document.createElement('span');
+			hex.className = 'hex';
+			hex.textContent = color.hex;
+
+			const detail = document.createElement('span');
+			detail.textContent = `RGB(${r}, ${g}, ${b}) / ${(color.ratio * 100).toFixed(1)}%`;
+
+			swatch.append(hex, detail);
+			swatch.addEventListener('click', async () => {
+				try {
+					await navigator.clipboard.writeText(color.hex);
+					hex.textContent = '已複製';
+				} catch {
+					hex.textContent = '無法複製';
+				}
+				setTimeout(() => {
+					hex.textContent = color.hex;
+				}, 1000);
+			});
+			return swatch;
+		}
+
+		function setCount(value) {
+			count = Math.min(MAX_COLORS, Math.max(MIN_COLORS, value));
+			countOutput.textContent = count;
+			decreaseButton.disabled = count === MIN_COLORS;
+			increaseButton.disabled = count === MAX_COLORS;
+			requestColorsDebounced();
+		}
+
+		decreaseButton.addEventListener('click', () => setCount(count - 1));
+		increaseButton.addEventListener('click', () => setCount(count + 1));
+		moodSelect.addEventListener('change', () => requestColors());
+
+		document.getElementById('upload-button').addEventListener('click', () => fileInput.click());
+		imagePanel.addEventListener('click', () => fileInput.click());
+		fileInput.addEventListener('change', () => {
+			loadImage(fileInput.files[0]);
+			// 清空欄位，讓重複選擇同一個檔案時也會觸發 change 事件
+			fileInput.value = '';
+		});
+
+		// 拖曳上傳；同時阻止瀏覽器在面板以外的位置直接開啟被拖入的檔案
+		window.addEventListener('dragover', (event) => event.preventDefault());
+		window.addEventListener('drop', (event) => event.preventDefault());
+		imagePanel.addEventListener('dragenter', () => imagePanel.classList.add('dragging'));
+		imagePanel.addEventListener('dragleave', (event) => {
+			if (!imagePanel.contains(event.relatedTarget)) {
+				imagePanel.classList.remove('dragging');
+			}
+		});
+		imagePanel.addEventListener('drop', (event) => {
+			imagePanel.classList.remove('dragging');
+			loadImage(event.dataTransfer.files[0]);
+		});
+
+		updateStatus();
+	</script>
+</body>
+</html>
