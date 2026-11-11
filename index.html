@@ -255,10 +255,10 @@
 		<label class="field">
 			Mood
 			<select id="mood">
-				<option value="Colorful">Colorful 鮮豔</option>
-				<option value="Bright" selected>Bright 明亮</option>
-				<option value="Muted">Muted 柔和</option>
-				<option value="Deep">Deep 深沉</option>
+				<option value="Colorful">Colorful</option>
+				<option value="Bright" selected>Bright</option>
+				<option value="Muted">Muted</option>
+				<option value="Deep">Deep</option>
 			</select>
 		</label>
 	</header>
@@ -297,6 +297,8 @@
 		let hasImage = false;
 		let engineReady = false;
 		let engineFailed = false;
+		// 運算環境的載入進度 (0 ~ 100)
+		let loadPercent = 0;
 		// 最新一次請求的編號，用來忽略過期的回應
 		let latestRequestId = 0;
 		let debounceTimer = null;
@@ -304,7 +306,10 @@
 		const worker = new Worker('worker.js', { type: 'module' });
 
 		worker.onmessage = ({ data }) => {
-			if (data.type === 'ready') {
+			if (data.type === 'progress') {
+				loadPercent = data.percent;
+				updateStatus();
+			} else if (data.type === 'ready') {
 				engineReady = true;
 				updateStatus();
 			} else if (data.type === 'fatal') {
@@ -338,7 +343,7 @@
 				return;
 			}
 			if (!engineReady) {
-				setStatus('正在載入運算環境，首次開啟需下載約 40 MB，請稍候...');
+				setStatus(`套件加載中... ${loadPercent}%`);
 			} else if (!hasImage) {
 				setStatus('請上傳圖片');
 			} else if (swatches.classList.contains('busy')) {
